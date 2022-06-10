@@ -83,11 +83,18 @@ while read p; do
 done < /tmp/${SVC}_config > /tmp/${SVC}_cnames
 
 while IFS='  ' read -r p n fn; do
+  if [ $(grep " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
+    echo "ERROR: $n cannot be defined more than once. Stopping."
+    exit 1
+  fi
   # To find missing vars by unmatching t-h-t params
   grep -q $n <<< $IGNORE && continue
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
     echo "Var for $n t-h-t param looks missing, use name $fn ?"
+    continue
   fi
+  # prepare string to wire-in it into ansible group vars in t-h-t
+  sed -r -i "s/ $n / $fn /g" /tmp/${SVC}_group_vars_wire_in
 done < /tmp/${SVC}_fnames
 
 # FIXME: maybe tht keys and hiera data needs another ignore lists
@@ -114,3 +121,6 @@ while read p; do
     sed -ri "/^$p:/d" "$VARS"
   fi
 done < /tmp/${SVC}_sr
+
+echo "Group vars to wire-in for t-h-t to call the role:"
+cat /tmp/${SVC}_group_vars_wire_in
