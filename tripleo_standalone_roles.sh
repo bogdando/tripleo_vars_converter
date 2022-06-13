@@ -6,6 +6,9 @@ PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-ba
 
 #SVC=nova_libvirt
 #THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+
+# How to deduplicate redundant names like tripleo_nova_compute_(nova_) etc.
+# NOTE: do not deduplicate tripleo_nova_compute_libvirt_*  (becomes confusing)
 MATCH="nova_|nova_libvirt_|nova_compute_" # do not use capture groups here!
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
@@ -60,7 +63,7 @@ while read p; do
   p2=$(sed -r "s/_$SVC//g" <<< $p)
   tht=$(sed -r "s/^($MATCH)|_$SVC|${SVC}_//g" <<< $p2)
   pref=$(sed -r "s/^($MATCH)\S+/\1/" <<< $p2)
-  if [ "$pref" = "$tht" ]; then
+  if [ "$pref" = "$tht" ] || grep -qE $MATCH <<< $pref ; then
     pref=tripleo_${SVC}_
   else
     pref="tripleo_${SVC}_${pref}"
@@ -79,7 +82,7 @@ while read p; do
   p=$(sed -r "s/_$SVC//g" <<< $p)
   tht=$(sed -r "s/^($MATCH|tripleo_profile_base_)|_$SVC|${SVC}_//g" <<< $p)
   pref=$(sed -r "s/^($MATCH|tripleo_profile_base_)\S+/\1/" <<< $p)
-  if [ "$pref" = "$tht" ] || [ "$pref" = "tripleo_profile_base_" ]; then
+  if [ "$pref" = "$tht" ] || [ "$pref" = "tripleo_profile_base_" ] || grep -qE $MATCH <<< $pref ; then
     pref=tripleo_${SVC}_
   else
     pref="tripleo_${SVC}_${pref}"
