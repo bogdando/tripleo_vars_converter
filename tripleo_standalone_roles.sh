@@ -6,7 +6,7 @@ PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-ba
 
 #SVC=nova_libvirt
 #THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-MATCH="nova_(libvirt_|compute_)?"
+MATCH="nova_|nova_libvirt_|nova_compute_" # do not use capture groups here!
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
 IGNORE="
@@ -78,7 +78,9 @@ while read p; do
   else
     pref="tripleo_${SVC}_${pref}"
   fi
-  fname=$(sed -r "s/($SVC)_\1/\1/g" <<< $pref$tht)
+  # dedup repeated service names in the vars names
+  # relax t-h-t following naming rules for ansible vars to keep it shorter
+  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)$MATCH(.*)/\1\2/g;" <<< $pref$tht)
   echo $pref $tht $fname
 done < /tmp/${SVC}_config > /tmp/${SVC}_cnames
 
