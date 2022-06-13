@@ -53,6 +53,7 @@ yq -r '. | keys[]' $VARS | sort -h > /tmp/${SVC}_sr
 # new ansible svc config data that doesn't map into t-h-t hiera data
 yq -r ".tripleo_${SVC}_config" $VARS > /tmp/${SVC}_src
 
+touch /tmp/${SVC}_fnames
 # produces lines with a prefix, short and full names to match tht params with vars
 while read p; do
   p=$(sed -r "s/_$SVC//g" <<< $p)
@@ -63,7 +64,11 @@ while read p; do
   else
     pref="tripleo_${SVC}_${pref}"
   fi
-  fname=$(sed -r "s/($SVC)_\1/\1/g" <<< $pref$tht)
+  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)${MATCH}(.*)/\1\2/g" <<< $pref$tht)
+  if [ $(grep " $fname " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
+    echo "ERROR: $fname cannot be defined more than once. Stopping."
+    exit 1
+  fi
   echo $pref $tht $fname
 done < /tmp/${SVC}_snake > /tmp/${SVC}_fnames
 
@@ -80,7 +85,7 @@ while read p; do
   fi
   # dedup repeated service names in the vars names
   # relax t-h-t following naming rules for ansible vars to keep it shorter
-  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)$MATCH(.*)/\1\2/g;" <<< $pref$tht)
+  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)${MATCH}(.*)/\1\2/g" <<< $pref$tht)
   echo $pref $tht $fname
 done < /tmp/${SVC}_config > /tmp/${SVC}_cnames
 
