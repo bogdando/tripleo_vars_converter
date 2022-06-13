@@ -54,29 +54,30 @@ yq -r '. | keys[]' $VARS | sort -h > /tmp/${SVC}_sr
 yq -r ".tripleo_${SVC}_config" $VARS > /tmp/${SVC}_src
 
 touch /tmp/${SVC}_fnames
-# produces lines with a prefix, short and full names to match tht params with vars
+# produces lines to match tht params with vars, with columns:
+# original snake_case, prefix, short name (uniq key), full var name
 while read p; do
-  p=$(sed -r "s/_$SVC//g" <<< $p)
-  tht=$(sed -r "s/^$MATCH|_$SVC|$SVC_//g" <<< $p)
-  pref=$(sed -r "s/^($MATCH)\S+/\1/" <<< $p)
+  p2=$(sed -r "s/_$SVC//g" <<< $p)
+  tht=$(sed -r "s/^($MATCH)|_$SVC|${SVC}_//g" <<< $p2)
+  pref=$(sed -r "s/^($MATCH)\S+/\1/" <<< $p2)
   if [ "$pref" = "$tht" ]; then
     pref=tripleo_${SVC}_
   else
     pref="tripleo_${SVC}_${pref}"
   fi
-  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)${MATCH}(.*)/\1\2/g" <<< $pref$tht)
+  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)($MATCH)(.*)/\1\3/g" <<< $pref$tht)
   if [ $(grep -q " $fname " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
     echo "ERROR: $fname cannot be defined more than once. Stopping."
     exit 1
   fi
-  echo $pref $tht $fname
+  echo $p $pref $tht $fname
 done < /tmp/${SVC}_snake > /tmp/${SVC}_fnames
 
 # produces lines with a prefix, short and full names to match puppet hiera data
 # with vars
 while read p; do
   p=$(sed -r "s/_$SVC//g" <<< $p)
-  tht=$(sed -r "s/^$MATCH|tripleo_profile_base_|_$SVC|$SVC_//g" <<< $p)
+  tht=$(sed -r "s/^($MATCH|tripleo_profile_base_)|_$SVC|${SVC}_//g" <<< $p)
   pref=$(sed -r "s/^($MATCH|tripleo_profile_base_)\S+/\1/" <<< $p)
   if [ "$pref" = "$tht" ] || [ "$pref" = "tripleo_profile_base_" ]; then
     pref=tripleo_${SVC}_
@@ -85,18 +86,18 @@ while read p; do
   fi
   # dedup repeated service names in the vars names
   # relax t-h-t following naming rules for ansible vars to keep it shorter
-  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)${MATCH}(.*)/\1\2/g" <<< $pref$tht)
+  fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)($MATCH)(.*)/\1\3/g" <<< $pref$tht)
   echo $pref $tht $fname
 done < /tmp/${SVC}_config > /tmp/${SVC}_cnames
 
-while IFS='  ' read -r p n fn; do
+while IFS='  ' read -r o p n fn; do
   if [ $(grep -q " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
     echo "ERROR: $n cannot be defined more than once. Stopping."
     exit 1
   fi
   # To find missing vars by unmatching t-h-t params
   if grep -q $n <<< $IGNORE ; then
-    sed -r -i "/^$n:/d" /tmp/${SVC}_group_vars_wire_in
+    sed -r -i "/^$o:/d" /tmp/${SVC}_group_vars_wire_in
     continue
   fi
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
@@ -104,7 +105,7 @@ while IFS='  ' read -r p n fn; do
     continue
   fi
   # prepare string to wire-in it into ansible group vars in t-h-t
-  sed -r -i "s/^($MATCH)?$n:/$fn:/g" /tmp/${SVC}_group_vars_wire_in
+  sed -r -i "s/^$o:/$fn:/g" /tmp/${SVC}_group_vars_wire_in
 done < /tmp/${SVC}_fnames
 
 # FIXME: maybe tht keys and hiera data needs another ignore lists
