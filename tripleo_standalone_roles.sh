@@ -1,15 +1,21 @@
 #!/bin/bash
+#
 # Example:
+#
+#SVC=nova_libvirt
+#VARS=tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
+#THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+#PUPPET=... extra template for puppet/base hiera configs ...
+#
+# How to deduplicate redundant names like tripleo_nova_compute_(nova_) etc.
+# Do not ue regex capture groups here!
+# NOTE: stripping libvirt_ off tripleo_nova_compute_libvirt_*  quickly becomes misleading
+#MATCH="nova_|libvirt_|compute_"
+
 SVC=nova_compute
 THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
 PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml
-
-#SVC=nova_libvirt
-#THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-
-# How to deduplicate redundant names like tripleo_nova_compute_(nova_) etc.
-# NOTE: do not deduplicate tripleo_nova_compute_libvirt_*  (becomes confusing)
-MATCH="nova_|nova_libvirt_|nova_compute_" # do not use capture groups here!
+MATCH="nova_|nova_libvirt_|nova_compute_"
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
 IGNORE="
@@ -32,6 +38,11 @@ admin_password
 DEFAULT
 "
 
+if ! git diff --quiet ; then 
+  echo "Stage or commit work tree changes before running it!"
+  exit 1
+fi
+
 # filter out multi-world acronyms like TLSCA then normalize acronyms as camelCase
 filter="sed -r 's/TLS/Tls/g;s/CA/Ca/g;s/([A-Z])([A-Z]*)([A-Z][a-z])/\1\L\2\u\3/g'"
 yq -r '.parameters|keys[]' $THT | eval $filter |sort -h | tee /tmp/$SVC | \
@@ -44,10 +55,13 @@ yq -r '.parameters|keys[]' $THT | eval $filter |sort -h | tee /tmp/$SVC |\
   yq -r '.[]' >  /tmp/${SVC}_group_vars_wire_in
 
 # prepare ansible config vars based on puppet base hiera data in tht
-yq -r '.outputs.role_data.value.config_settings,.resources.RoleParametersValue.properties.value' $THT | \
+namespace=".outputs.role_data.value.config_settings,.resources.RoleParametersValue.properties.value"
+yq -r "$namespace" $THT | awk  '/::/ {print}' > /tmp/${SVC}_config_defaults
+yq -r "$namespace" $THT | \
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | sort -u > /tmp/${SVC}_config
-yq -r '.outputs.role_data.value.config_settings,.resources.RoleParametersValue.properties.value' $PUPPET | \
+yq -r "$namespace" $PUPPET | awk  '/::.*[^\{]$/ {print}' >> /tmp/${SVC}_config_defaults
+yq -r "$namespace" $PUPPET | \
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | sort -u >> /tmp/${SVC}_config
 
@@ -117,7 +131,10 @@ while IFS='  ' read -r p n fn; do
   # (also look it up in new ansible config data)
   grep -q $n <<< $IGNORE && continue
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n /tmp/${SVC}_src && ! grep -q $n $VARS ; then
-    echo "Var for $n hiera key looks missing, use name $fn ?"
+    echo "Var for $n hiera key looks missing, use:"
+    default=$(grep -E "$(sed -r "s/_/\(_\|::\)/g" <<< $n)" /tmp/${SVC}_config_defaults | \
+      awk -F': ' '!/\{/ {if ($2) print $2}' | tr -s ',' '\n')
+    echo "${fn}: $default"
   fi
 done < /tmp/${SVC}_cnames
 
