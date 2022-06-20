@@ -21,6 +21,8 @@ VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$S
 # Role vars will be/expected to be prefixed with that:
 PREFIX="tripleo_${SVC}_"  # or just tripleo_
 
+ROLE_PATH=$(dirname $(dirname "$VARS"))
+
 IGNORE="
 service_net_map
 service_data
@@ -42,7 +44,11 @@ DEFAULT
 "
 
 if ! git diff --quiet ; then 
-  echo "ERROR: Stage or commit work tree changes before running it!"
+  echo "FATAL: Stage or commit work tree changes before running it!"
+  exit 1
+fi
+if [[ ! "$ROLE_PATH" =~ 'tripleo_ansible/roles/' ]] ; then
+  echo "FATAL: $VARS file should be inside of the tripleo_ansible/roles/ path!"
   exit 1
 fi
 
@@ -112,6 +118,7 @@ dedup() {
   local keyname="${4:-}"
   local msg
   local role_var=$(awk "/^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
+  local result=1
 
   if [ "$keyname" ]; then
     msg="$keyname: {get_param: $tht_param}"
@@ -123,15 +130,17 @@ dedup() {
     if grep -qE "\b${fn}\b" /tmp/${SVC}_sr && grep -qE "\b${role_var}\b" /tmp/${SVC}_sr; then
       echo "WARNING $fn: remove dup of $role_var: $msg"
       sed -ri "/^$fn:/d" "$VARS"
-      return 0
+      result=0
     fi
-    echo "WARNING $fn: rename to $role_var: $tht_param wins over hiera mapping"
-    grep -rE "\b${fn}\b" $(dirname $(dirname "$VARS")) |\
-      awk -F':' '{print $1}' | sort -u |\
-      xargs -r -n1 -I{} sed -ri "s/\b${fn}\b/$role_var/g" {}
-    return 0
+    if grep -qrE "\b${fn}\b" "$ROLE_PATH"; then
+      echo "WARNING $fn: rename all to $role_var: $tht_param wins over hiera mapping"
+      grep -rE "\b${fn}\b" $(dirname $(dirname "$VARS")) |\
+        awk -F':' '{print $1}' | sort -u |\
+        xargs -r -n1 -I{} sed -ri "s/\b${fn}\b/$role_var/g" {}
+      result=0
+    fi
   fi
-  return 1
+  return $result
 }
 
 # MAIN
