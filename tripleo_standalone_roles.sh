@@ -110,7 +110,8 @@ yq -r ".tripleo_${SVC}_config" $VARS > /tmp/${SVC}_src
 
 
 # used during variables deduplication run
-# returns 1 - no duplicates found, or 0 - dedpuplicated the tht_param mapping
+# returns 1 - no duplicates found,
+# or 0 - found duplicates in mappings
 dedup() {
   local fn="$1"
   local tht_param="$2"
@@ -140,6 +141,7 @@ dedup() {
       result=0
     fi
   fi
+  [ "$role_var" ] && [ "$role_var" != "$fn" ] && result=0
   return $result
 }
 
