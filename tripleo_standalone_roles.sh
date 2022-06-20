@@ -46,14 +46,15 @@ if ! git diff --quiet ; then
   exit 1
 fi
 
+# where to look for t-h-t params (both in $THT and $PUPPET files)
 # filter out multi-world acronyms like TLSCA then normalize acronyms as camelCase
 filter="sed -r 's/TLS/Tls/g;s/CA/Ca/g;s/([A-Z])([A-Z]*)([A-Z][a-z])/\1\L\2\u\3/g'"
-yq -r '.parameters|keys[]' $THT | eval $filter |sort -h | tee /tmp/$SVC | \
+yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' >  /tmp/${SVC}_snake
 
 # prepare group vars to wire-in for tht to call the role
-yq -r '.parameters|keys[]' $THT | eval $filter |sort -h | tee /tmp/$SVC |\
+yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC |\
   python -c "import fileinput; import re; print([re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() + ': {get_param: ' + str.strip() + '}' for str in fileinput.input()])" | \
   yq -r '.[]' >  /tmp/${SVC}_group_vars_wire_in
 
@@ -90,7 +91,7 @@ yq -r "$hieraloc | $enterheatfuncs | $isheatfunc" \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/;s/,$//g;/ \{$/d' > /tmp/${SVC}_config_special
 
 # just a bulk raw view into related $SVC hiera keys
-yq -r "$hieraloc" $THT $PUPPET | grep  :: |\
+yq -r "$hieraloc" $PUPPET $THT | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | sort -u > /tmp/${SVC}_config
 
