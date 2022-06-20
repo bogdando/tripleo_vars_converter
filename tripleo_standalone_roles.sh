@@ -126,6 +126,9 @@ dedup() {
     fi
     echo "WARNING $fn: rename to $role_var: $tht_param wins over hiera mapping"
     sed -ri "s/^$fn:/$role_var:/g" "$VARS"
+    grep -rE "\b${fn}\b" $(dirname $(dirname "$VARS")) |\
+      awk -F':' '{print $1}' | sort -u |\
+      xargs -r -n1 -I{} sed -ri "s/\b${fn}\b/$role_var/g" {}
     return 0
   fi
   return 1
