@@ -166,18 +166,18 @@ done < /tmp/${SVC}_fnames
 while IFS='  ' read -r s p n fn; do
   # find hiera mapped role vars duplicated by role vars mapped to tht params,
   standard_name_match=$(sed -r "s/_|::/\(_\|::\)/g" <<< $n)
-  lookup=$(grep -E "_?${standard_name_match}\b" /tmp/${SVC}_config_special)
+  lookup=$(grep -m1 -E "_?${standard_name_match}\b" /tmp/${SVC}_config_special)
   # does looked up hiera data match a direct get_param mapping?
   tht_param=$(awk -F': ' '{print $2}'<<< $lookup)
-  if [ "$tht_param" ] && grep -qE "^$tht_param " /tmp/${SVC}_fnames; then
+  if [ "$tht_param" ]; then
     role_var=$(awk "/^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
-    if [ "$role_var" != "$fn" ] && ! grep -qE "$standard_name_match" <<< $role_var ; then
+    if [ "$role_var" ] && [ "$role_var" != "$fn" ] && ! grep -qE "$standard_name_match" <<< $role_var ; then
       if grep -qE "\b${role_var}\b" /tmp/${SVC}_sr; then
-        echo "WARNING $fn: removed dup of $role_var: hiera assignment of $tht_param"
+        echo "WARNING $fn: remove dup of $role_var: hiera assignment of $tht_param"
         sed -ri "/^$fn:/d" "$VARS"
         continue
       fi
-      echo "WARNING $fn: renamed to $role_var: $tht_param wins over hiera mapping"
+      echo "WARNING $fn: rename to $role_var: $tht_param wins over hiera mapping"
       sed -ri "s/^$fn:/$role_var:/g" "$VARS"
       continue
     fi
@@ -185,16 +185,17 @@ while IFS='  ' read -r s p n fn; do
   # find duplicating vars mapped to tht params and puppet hiera data
   dup=$(jq -r "select(.key|test(\"${standard_name_match}\")) | .value.get_param" /tmp/${SVC}_config_substitutions)
   keyname=$(jq -r "select(.key|test(\"${standard_name_match}\")) | .key" /tmp/${SVC}_config_substitutions)
-  if [ "$dup" ] && ! grep -qE "$standard_name_match" <<< $fn ; then 
+  if [ "$dup" ]; then 
     role_var=$(awk "/^$dup / {print \$NF}" /tmp/${SVC}_fnames)
-    if grep -qE "\b${fn}\b" /tmp/${SVC}_sr; then
-      echo "WARNING $fn: removed dup of $role_var: hiera $keyname: {get_param: $dup}"
+    if [ "$role_var" ] && [ "$role_var" != "$fn" ] && grep -qE "\b${fn}\b" /tmp/${SVC}_sr; then
+      echo "WARNING $fn: remove dup of $role_var: hiera $keyname: {get_param: $dup}"
       sed -ri "/^$fn:/d" "$VARS"
       continue
+    elif [ "$role_var" ]; then
+      echo "WARNING $fn: rename to $role_var: $dup wins over hiera mapping"
+      sed -ri "s/^$fn:/$role_var:/g" "$VARS"
+      continue
     fi
-    echo "WARNING $fn: renamed to $role_var: $dup wins over hiera mapping"
-    sed -ri "s/^$fn:/$role_var:/g" "$VARS"
-    continue
   fi
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n /tmp/${SVC}_src && ! grep -q $n $VARS ; then
     # when relaxed naming rule didn't match the original strict name,
