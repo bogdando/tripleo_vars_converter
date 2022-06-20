@@ -19,7 +19,7 @@ MATCH="nova_|nova_libvirt_|nova_compute_"
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
 # Role vars will be/expected to be prefixed with that:
-PREFIX="tripleo_${SVC}_"
+PREFIX="tripleo_${SVC}_"  # or just tripleo_
 
 IGNORE="
 service_net_map
@@ -101,6 +101,37 @@ yq -r '. | keys[]' $VARS | sort -h > /tmp/${SVC}_sr
 # new ansible svc config data that doesn't map into t-h-t hiera data
 yq -r ".tripleo_${SVC}_config" $VARS > /tmp/${SVC}_src
 
+
+# used during variables deduplication run
+# returns 1 - no duplicates found, or 0 - dedpuplicated the tht_param mapping
+dedup() {
+  local fn="$1"
+  local tht_param="$2"
+  local standard_name_match="$3"
+  local keyname="${4:-}"
+  local msg
+  local role_var=$(awk "/^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
+
+  if [ "$keyname" ]; then
+    msg="$keyname: {get_param: $tht_param}"
+  else
+    msg="direct assignment of $tht_param"
+  fi
+
+  if [ "$role_var" ] && [ "$role_var" != "$fn" ] && ! grep -qE "$standard_name_match" <<< $role_var ; then
+    if grep -qE "\b${fn}\b" /tmp/${SVC}_sr && grep -qE "\b${role_var}\b" /tmp/${SVC}_sr; then
+      echo "WARNING $fn: remove dup of $role_var: $msg"
+      sed -ri "/^$fn:/d" "$VARS"
+      return 0
+    fi
+    echo "WARNING $fn: rename to $role_var: $tht_param wins over hiera mapping"
+    sed -ri "s/^$fn:/$role_var:/g" "$VARS"
+    return 0
+  fi
+  return 1
+}
+
+# MAIN
 touch /tmp/${SVC}_fnames
 # produces lines to match tht params with vars, with columns:
 # tht param as is, tht param snake_case, prefix, short name (uniq key), full role var name
@@ -158,45 +189,21 @@ while IFS='  ' read -r o p pr n fn; do
   sed -r -i "s/^$p:/$fn:/g" /tmp/${SVC}_group_vars_wire_in
 done < /tmp/${SVC}_fnames
 
-# To find missing vars by unmatching hiera data keys,
-# also look it up in new ansible config data var names;
-# exclude all duplicates among role vars mapped to tht params and hiera keys
-#
 # strict name, prefix, short name (uniq key), full role var name
 while IFS='  ' read -r s p n fn; do
-  # find hiera mapped role vars duplicated by role vars mapped to tht params,
+  # find hiera mapped role vars duplicated by role vars mapped to tht params
   standard_name_match=$(sed -r "s/_|::/\(_\|::\)/g" <<< $n)
   lookup=$(grep -m1 -E "_?${standard_name_match}\b" /tmp/${SVC}_config_special)
-  # does looked up hiera data match a direct get_param mapping?
+  # does looked up hiera data match a direct tht param mapping?
   tht_param=$(awk -F': ' '{print $2}'<<< $lookup)
-  if [ "$tht_param" ]; then
-    role_var=$(awk "/^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
-    if [ "$role_var" ] && [ "$role_var" != "$fn" ] && ! grep -qE "$standard_name_match" <<< $role_var ; then
-      if grep -qE "\b${role_var}\b" /tmp/${SVC}_sr; then
-        echo "WARNING $fn: remove dup of $role_var: hiera assignment of $tht_param"
-        sed -ri "/^$fn:/d" "$VARS"
-        continue
-      fi
-      echo "WARNING $fn: rename to $role_var: $tht_param wins over hiera mapping"
-      sed -ri "s/^$fn:/$role_var:/g" "$VARS"
-      continue
-    fi
-  fi
-  # find duplicating vars mapped to tht params and puppet hiera data
-  dup=$(jq -r "select(.key|test(\"${standard_name_match}\")) | .value.get_param" /tmp/${SVC}_config_substitutions)
+  [ "$tht_param" ] && dedup $fn $tht_param $standard_name_match && continue
+  # also search for duplicates mapped by get_param
+  tht_param=$(jq -r "select(.key|test(\"${standard_name_match}\")) | .value.get_param" /tmp/${SVC}_config_substitutions)
   keyname=$(jq -r "select(.key|test(\"${standard_name_match}\")) | .key" /tmp/${SVC}_config_substitutions)
-  if [ "$dup" ]; then 
-    role_var=$(awk "/^$dup / {print \$NF}" /tmp/${SVC}_fnames)
-    if [ "$role_var" ] && [ "$role_var" != "$fn" ] && grep -qE "\b${fn}\b" /tmp/${SVC}_sr; then
-      echo "WARNING $fn: remove dup of $role_var: hiera $keyname: {get_param: $dup}"
-      sed -ri "/^$fn:/d" "$VARS"
-      continue
-    elif [ "$role_var" ]; then
-      echo "WARNING $fn: rename to $role_var: $dup wins over hiera mapping"
-      sed -ri "s/^$fn:/$role_var:/g" "$VARS"
-      continue
-    fi
-  fi
+  [ "$tht_param" ] && dedup $fn $tht_param $standard_name_match $keyname && continue
+  
+  # find missing vars by unmatching hiera data keys,
+  # also look it up in new ansible config data var names
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n /tmp/${SVC}_src && ! grep -q $n $VARS ; then
     # when relaxed naming rule didn't match the original strict name,
     # fallback to orignal name in *_config as well to pick a tht default
