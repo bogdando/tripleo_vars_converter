@@ -130,14 +130,14 @@ dedup() {
   if [ "$role_var" ] && [ "$role_var" != "$fn" ] && ! grep -qE "$standard_name_match" <<< $role_var ; then
     if grep -qE "\b${fn}\b" /tmp/${SVC}_sr && grep -qE "\b${role_var}\b" /tmp/${SVC}_sr; then
       echo "WARNING $fn: remove dup of $role_var: $msg"
-      sed -ri "/^$fn:/d" "$VARS"
+      sed -ri "/^${fn}:/d" "$VARS"
       result=0
     fi
-    if grep -qrE "\b${fn}\b" "$ROLE_PATH"; then
+    if grep -qE "\b${fn}\b" /tmp/${SVC}_sr; then
       echo "WARNING $fn: rename all to $role_var: $tht_param wins over hiera mapping"
-      grep -rE "\b${fn}\b" $(dirname $(dirname "$VARS")) |\
+      grep -rE "\b${fn}\b" "$ROLE_PATH" |\
         awk -F':' '{print $1}' | sort -u |\
-        xargs -r -n1 -I{} sed -ri "s/\b${fn}\b/$role_var/g" {}
+        xargs -r -n1 -I{} sed -ri "s/\b${fn}\b/${role_var}/g" {}
       result=0
     fi
   fi
@@ -150,8 +150,8 @@ touch /tmp/${SVC}_fnames
 # produces lines to match tht params with vars, with columns:
 # tht param as is, tht param snake_case, prefix, short name (uniq key), full role var name
 while read -r o p; do
-  p2=$(sed -r "s/_$SVC//g" <<< $p)
-  tht=$(sed -r "s/^($MATCH)|_$SVC|${SVC}_//g" <<< $p2)
+  p2=$(sed -r "s/_${SVC}//g" <<< $p)
+  tht=$(sed -r "s/^($MATCH)|_${SVC}|${SVC}_//g" <<< $p2)
   pref=$(sed -r "s/^($MATCH)\S+/\1/" <<< $p2)
   if [ "$pref" = "$tht" ] || grep -qE $MATCH <<< $pref ; then
     pref=${PREFIX}
@@ -170,9 +170,9 @@ done < /tmp/${SVC}_snake > /tmp/${SVC}_fnames
 # strict name, prefix, short name (uniq key) and full role var name,
 # to match puppet hiera data with role vars
 while read p; do
-  p2=$(sed -r "s/_$SVC//g" <<< $p)
-  tht=$(sed -r "s/^($MATCH|tripleo_profile_base_)|_$SVC|${SVC}_//g" <<< $p2)
-  pref=$(sed -r "s/^($MATCH|tripleo_profile_base_)\S+/\1/" <<< $p2)
+  p2=$(sed -r "s/_${SVC}//g" <<< $p)
+  tht=$(sed -r "s/^(${MATCH}|tripleo_profile_base_)|_${SVC}|${SVC}_//g" <<< $p2)
+  pref=$(sed -r "s/^(${MATCH}|tripleo_profile_base_)\S+/\1/" <<< $p2)
   if [ "$pref" = "$tht" ] || [ "$pref" = "tripleo_profile_base_" ] || grep -qE $MATCH <<< $pref ; then
     pref=${PREFIX}
   else
@@ -192,7 +192,7 @@ while IFS='  ' read -r o p pr n fn; do
   fi
   # To find missing vars by unmatching t-h-t params
   if grep -q $n <<< $IGNORE ; then
-    sed -r -i "/^$o:/d" /tmp/${SVC}_group_vars_wire_in
+    sed -r -i "/^${o}:/d" /tmp/${SVC}_group_vars_wire_in
     continue
   fi
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
@@ -200,7 +200,7 @@ while IFS='  ' read -r o p pr n fn; do
     continue
   fi
   # prepare string to wire-in it into ansible group vars in t-h-t
-  sed -r -i "s/^$p:/$fn:/g" /tmp/${SVC}_group_vars_wire_in
+  sed -r -i "s/^${p}:/${fn}:/g" /tmp/${SVC}_group_vars_wire_in
 done < /tmp/${SVC}_fnames
 
 # strict name, prefix, short name (uniq key), full role var name
@@ -241,13 +241,13 @@ while read p; do
   # To remove vars not existing as t-h-t params, nor mapped in t-h-t hiera data,
   # neither the new ansible config data doesn't implement it;
   # but leaving foo_real as a valid match for a foo
-  m=$(sed -r "s/^tripleo_($MATCH|${SVC}_|_${SVC}$)//g" <<< $p)
+  m=$(sed -r "s/^tripleo_(${MATCH}|${SVC}_|_${SVC}$)//g" <<< $p)
   m=$(sed -r "s/(\S+)_real/\1/g" <<< $m)
   grep -q $m <<< $IGNORE && continue
   grep -q -E "${ignored%|*}" <<< $m && continue
   if ! grep -q $m /tmp/${SVC}_fnames && ! grep -q $m /tmp/${SVC}_cnames && ! grep -q $m /tmp/${SVC}_src; then
     echo "WARNING $m: removed as redundant: no t-h-t param, nor hiera mapping found"
-    sed -ri "/^$p:/d" "$VARS"
+    sed -ri "/^${p}:/d" "$VARS"
   fi
   # also remove redundant var that map hiera data directly substituted by other vars
 done < /tmp/${SVC}_sr
