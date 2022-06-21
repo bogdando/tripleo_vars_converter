@@ -194,11 +194,17 @@ while IFS='  ' read -r o p pr n fn; do
     echo "ERROR $n: cannot be defined more than once. Stopping."
     exit 1
   fi
-  # To find missing vars by unmatching t-h-t params
+  # remove ignored and irrelevant records:
+  # those starting from tht param names, or coming from puppet base
   if grep -q $n <<< $IGNORE ; then
-    sed -r -i "/^${o}:/d" /tmp/${SVC}_group_vars_wire_in
+    sed -r -i "/^(${o}|${p}):/d" /tmp/${SVC}_group_vars_wire_in
     continue
   fi
+  if grep -q $n /tmp/${SVC}_snake_base ; then
+      # drop it from the list of group vars to wire-in in tht for main SVC
+      sed -r -i "/^${p}:/d" /tmp/${SVC}_group_vars_wire_in
+  fi
+  # to find missing vars by unmatching t-h-t params
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
     if grep -q $n /tmp/${SVC}_snake_base ; then
       echo "INFO $fn: missing mapping to t-h-t puppet base param (ignore that)"
@@ -208,7 +214,7 @@ while IFS='  ' read -r o p pr n fn; do
       continue
     fi
   fi
-  # prepare string to wire-in it into ansible group vars in t-h-t
+  # prepare string to wire-in it into ansible group vars in t-h-t of main SVC
   sed -r -i "s/^${p}:/${fn}:/g" /tmp/${SVC}_group_vars_wire_in
 done < /tmp/${SVC}_fnames
 
