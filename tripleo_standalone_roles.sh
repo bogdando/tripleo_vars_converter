@@ -38,8 +38,6 @@ _idm_realm
 _ansible
 _config_dir
 _environment
-idmm
-admin_password
 DEFAULT
 "
 
