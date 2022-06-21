@@ -120,7 +120,7 @@ dedup() {
   local standard_name_match="$3"
   local keyname="${4:-}"
   local msg
-  local role_var=$(awk "/^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
+  local role_var=$(awk "BEGIN{IGNORECASE=1}; /^$tht_param / {print \$NF}" /tmp/${SVC}_fnames)
   local result=1
 
   if [ "$keyname" ]; then
