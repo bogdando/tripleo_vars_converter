@@ -59,6 +59,10 @@ yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC 
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake
 
+yq -r '.parameters|keys[]' $PUPPET | eval $filter |sort -h | tee /tmp/$SVC | \
+  python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
+  yq -r '.[]' | sort -u >  /tmp/${SVC}_snake_base
+
 # prepare group vars to wire-in for tht to call the role
 yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC |\
   python -c "import fileinput; import re; print([re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() + ': {get_param: ' + str.strip() + '}' for str in fileinput.input()])" | \
@@ -198,8 +202,13 @@ while IFS='  ' read -r o p pr n fn; do
     continue
   fi
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
-    echo "ERROR $fn: mapping to t-h-t param looks missing"
-    continue
+    if grep -q $n /tmp/${SVC}_snake_base ; then
+      echo "INFO $fn: missing mapping to t-h-t puppet base param (ignore that)"
+      continue
+    else
+      echo "ERROR $fn: missing mapping to t-h-t main service param!"
+      continue
+    fi
   fi
   # prepare string to wire-in it into ansible group vars in t-h-t
   sed -r -i "s/^${p}:/${fn}:/g" /tmp/${SVC}_group_vars_wire_in
