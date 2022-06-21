@@ -50,19 +50,17 @@ if [[ ! "$ROLE_PATH" =~ 'tripleo_ansible/roles/' ]] ; then
   exit 1
 fi
 
-# where to look for t-h-t params (both in $THT and $PUPPET files)
-# filter out multi-world acronyms like TLSCA then normalize acronyms as camelCase
-filter="sed -r 's/TLS/Tls/g;s/CA/Ca/g;s/([A-Z])([A-Z]*)([A-Z][a-z])/\1\L\2\u\3/g'"
-yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC | \
+# where to look for t-h-t params (both in $THT and $PUPPET files),
+yq -r '.parameters|keys[]' $PUPPET $THT | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake
 
-yq -r '.parameters|keys[]' $PUPPET | eval $filter |sort -h | tee /tmp/$SVC | \
+yq -r '.parameters|keys[]' $PUPPET | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake_base
 
 # prepare group vars to wire-in for tht to call the role
-yq -r '.parameters|keys[]' $PUPPET $THT | eval $filter |sort -h | tee /tmp/$SVC |\
+yq -r '.parameters|keys[]' $PUPPET $THT | sort -h | tee /tmp/$SVC |\
   python -c "import fileinput; import re; print([re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() + ': {get_param: ' + str.strip() + '}' for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_group_vars_wire_in
 
@@ -163,7 +161,7 @@ while read -r o p; do
     pref=${PREFIX}${pref}
   fi
   fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)($MATCH)(.*)/\1\3/g" <<< $pref$tht)
-  if [ $(grep -q " $fname " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
+  if [ $(grep -q " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
     echo "ERROR $fname: cannot be defined more than once. Stopping."
     exit 1
   fi
