@@ -38,7 +38,6 @@ _idm_realm
 _ansible
 _config_dir
 _environment
-DEFAULT
 "
 
 if ! git diff --quiet ; then 
