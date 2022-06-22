@@ -143,7 +143,7 @@ dedup() {
       result=0
     fi
   fi
-  [ "$role_var" ] && [ "$role_var" != "$fn" ] && result=0
+  [ "$role_var" ] && result=0
   return $result
 }
 
