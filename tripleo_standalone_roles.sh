@@ -71,8 +71,9 @@ hieraloc='.outputs.role_data.value.config_settings,.resources.RoleParametersValu
 # enter topscope funcs having the same output data view (like with and w/o map_merge)
 enterheatfuncs='.,.map_replace?,.map_merge?,.get_attr?,.str_replace?,.list_concat? | select(.!=null)[] | to_entries[] | select(.key|type!="number")'
 # is (not/) a heat func
-notheatfunc='select(.key|test("^(if$|map_|list_|get_|str_)")|not)'
-isheatfunc='select(.key|test("^(if$|map_|list_|get_|str_)"))'
+# FIXME: this treats unqualified hiera keys as heat functions...
+notheatfunc='select(.key|test("::"))'
+isheatfunc='select(.key|test("::")|not)'
 # is (not/) an object
 notobj='select (.value|type!="object")'
 isobj='select (.value|type=="object")'
@@ -87,9 +88,9 @@ yq -r "$hieraloc | $enterheatfuncs | $notheatfunc | $notobj" \
 yq -r "$hieraloc | $enterheatfuncs | $isobj | select(.value.get_param!=null) | select(.value.get_param|type==\"string\")" \
   $PUPPET $THT > /tmp/${SVC}_config_substitutions
 
-# get complex hiera data (conditions/templating) that requires special handling:
+# all data, including nested objects that requires special handling:
 # cannot assume a default, nor can assume if it misses a role var or not
-yq -r "$hieraloc | $enterheatfuncs | $isobj " \
+yq -r "$hieraloc | $enterheatfuncs" \
   $PUPPET $THT > /tmp/${SVC}_config_special_full
 # do the best to suggest possible values
 yq -r "$hieraloc | $enterheatfuncs | $isheatfunc" \
@@ -242,10 +243,11 @@ while IFS='  ' read -r s p n fn; do
     fi
     echo "ERROR $fn: mapping to hiera key looks missing: see t-h-t definition: $default"
     # looking for a better way to show enclosing object (heat funcs stack)
-    snippet=$(grep -E -C10 "_?$standard_name_match\b" /tmp/${SVC}_config_special_full)
+    snippet=$(grep -E -C30 "_?$standard_name_match\b" /tmp/${SVC}_config_special_full)
     [ "$snippet" ] || continue
-    echo " --------- code snipped ------------"
+    echo " --------- t-h-t code snippet ------------"
     echo "$snippet"
+    echo " ... "
   fi
 done < /tmp/${SVC}_cnames
 
