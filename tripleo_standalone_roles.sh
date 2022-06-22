@@ -237,11 +237,11 @@ while IFS='  ' read -r s p n fn; do
   
   # find missing vars by unmatching hiera data keys,
   # also look it up in new ansible config data var names
-  if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n /tmp/${SVC}_src && ! grep -q $n $VARS ; then
+  if ! grep -q $fn /tmp/${SVC}_sr && ! grep -q $fn /tmp/${SVC}_src && ! grep -q $fn $VARS ; then
     # when relaxed naming rule didn't match the original strict name,
     # fallback to orignal name in *_config as well to pick a tht default
     strict_name_match=$(sed -r "s/_|::/\(_\|::\)/g" <<< $s)
-    default=$(jq -r  "select(.key|test(\"${standard_name_match}|${strict_name_match}\")) | .value" /tmp/${SVC}_config_defaults /tmp/${SVC}_config_special_full)
+    default=$(jq -r  "select(.key|test(\"${standard_name_match}|${strict_name_match}\")) | .value" /tmp/${SVC}_config_defaults /tmp/${SVC}_config_special_full | uniq)
     if [ "${default}${lookup}" ]; then
       if grep -q $n /tmp/${SVC}_config_base ; then
         echo "INFO $fn: missing mapping to puppet base hiera key (ignore that): matching t-h-t value: ${lookup:-$default}"
