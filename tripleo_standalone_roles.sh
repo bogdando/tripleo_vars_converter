@@ -104,6 +104,11 @@ yq -r "$hieraloc" $PUPPET $THT | grep  :: |\
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config
 
+yq -r "$hieraloc" $PUPPET | grep  :: |\
+  awk -F '": ' '/::/ {if ($1) print $1}' | \
+  sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
+  sort -u > /tmp/${SVC}_config_base
+
 # top scope vars dedined in svc role defaults
 yq -r '. | keys[]' $VARS | sort -h > /tmp/${SVC}_sr
 
@@ -238,10 +243,18 @@ while IFS='  ' read -r s p n fn; do
     strict_name_match=$(sed -r "s/_|::/\(_\|::\)/g" <<< $s)
     default=$(jq -r  "select(.key|test(\"${standard_name_match}|${strict_name_match}\")) | .value" /tmp/${SVC}_config_defaults /tmp/${SVC}_config_special_full)
     if [ "${default}${lookup}" ]; then
-      echo "ERROR $fn: mapping to hiera key looks missing: matching t-h-t value: ${lookup:-$default}"
+      if grep -q $n /tmp/${SVC}_config_base ; then
+        echo "INFO $fn: missing mapping to puppet base hiera key (ignore that): matching t-h-t value: ${lookup:-$default}"
+      else
+        echo "ERROR $fn: missing mapping to hiera key: matching t-h-t value: ${lookup:-$default}"
+      fi
       continue
     fi
-    echo "ERROR $fn: mapping to hiera key looks missing: see t-h-t definition: $default"
+    if grep -q $n /tmp/${SVC}_config_base ; then
+      echo "INFO $fn: missing mapping to puppet base hiera key (ignore that): see t-h-t definition: $default"
+    else
+      echo "ERROR $fn: missing mapping to hiera key: see t-h-t definition: $default"
+    fi
     # looking for a better way to show enclosing object (heat funcs stack)
     snippet=$(grep -E -C30 "_?$standard_name_match\b" /tmp/${SVC}_config_special_full)
     [ "$snippet" ] || continue
