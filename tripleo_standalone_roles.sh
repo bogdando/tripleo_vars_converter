@@ -1,28 +1,38 @@
 #!/bin/bash
+# Validate and fix tripleo standalone role vars mappings for t-h-t/hiera data
 #
 # Example:
+#SVC=service_component
+#THT=tripleo-heat-templates/deployment/service/service-component-container-puppet.yaml
 #
-#SVC=nova_libvirt
-#VARS=tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
-#THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-#PUPPET=... extra template for puppet/base hiera configs ...
+# base puppet template with common params and hiera data, shared with other components
+#PUPPET=tripleo-heat-templates/deployment/service/service-base-puppet.yaml
 #
-# How to deduplicate redundant names like tripleo_nova_compute_(nova_) etc.
-# Do not ue regex capture groups here!
-# NOTE: stripping libvirt_ off tripleo_nova_compute_libvirt_*  quickly becomes misleading
-#MATCH="nova_|libvirt_|compute_"
+# matching regex rules to deduplicate long names, like
+# tripleo_service_component_foo_service_bar_component_subcomponent_baz
+# into: tripleo_service_component_foo_subcomponent_baz
+# (do not ue regex capture groups here)
+#MATCH="nova_|nova_libvirt_|nova_compute_"
+#
+# NOTE: stripping libvirt_ subcomponent off tripleo_nova_compute_libvirt_*
+# names quickly becomes misleading and breaks the mappings detection logic
 
+#SVC=nova_libvirt
+#THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+#MATCH="nova_|libvirt_|compute_"
 SVC=nova_compute
 THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
-PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml
 MATCH="nova_|nova_libvirt_|nova_compute_"
+
+PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
-# Role vars will be/expected to be prefixed with that:
-PREFIX="tripleo_${SVC}_"  # or just tripleo_
+# role vars will be/expected to be prefixed with that:
+PREFIX="tripleo_${SVC}_"  # empty or just tripleo_ will not work
 
 ROLE_PATH=$(dirname $(dirname "$VARS"))
 
+# special names for t-h-t params and role vars to exclude from checking
 IGNORE="
 service_net_map
 service_data
@@ -111,10 +121,9 @@ yq -r "$hieraloc" $PUPPET | grep  :: |\
 # top scope vars dedined in svc role defaults
 yq -r '. | keys[]' $VARS | sort -h > /tmp/${SVC}_sr
 
-
-# new ansible svc config data that doesn't map into t-h-t hiera data
+# new format of data for ansible config template.
+# it doesn't have to map into t-h-t params, nor hiera data
 yq -r ".tripleo_${SVC}_config" $VARS > /tmp/${SVC}_src
-
 
 # used during variables deduplication run
 # returns 1 - no duplicates found,
@@ -167,7 +176,7 @@ while read -r o p; do
   fi
   fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)($MATCH)(.*)/\1\3/g" <<< $pref$tht)
   if [ $(grep -q " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
-    echo "ERROR $fname: cannot be defined more than once. Stopping."
+    echo "FATAL $fname: cannot be defined more than once. Stopping."
     exit 1
   fi
   echo $o $p $pref $tht $fname
@@ -194,7 +203,7 @@ done < /tmp/${SVC}_config > /tmp/${SVC}_cnames
 # tht param as is, tht param snake_case, prefix, short name (uniq key), full role var name
 while IFS='  ' read -r o p pr n fn; do
   if [ $(grep -q " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
-    echo "ERROR $n: cannot be defined more than once. Stopping."
+    echo "FATAL $n: cannot be defined more than once. Stopping."
     exit 1
   fi
   # remove ignored and irrelevant records:
