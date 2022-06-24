@@ -17,14 +17,17 @@
 # NOTE: stripping libvirt_ subcomponent off tripleo_nova_compute_libvirt_*
 # names quickly becomes misleading and breaks the mappings detection logic
 
-#SVC=nova_libvirt
-#THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-#MATCH="nova_|libvirt_|compute_"
-SVC=nova_compute
-THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
-MATCH="nova_|nova_libvirt_|nova_compute_"
+SVC=nova_libvirt
+THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+MATCH="nova_|nova_libvirt_|compute_"
+#SVC=nova_compute
+#THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
+#MATCH="nova_|nova_libvirt_|nova_compute_"
 
-PUPPET=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml
+PUPPET=(
+  "/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml"
+  "/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
+)
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
 # role vars will be/expected to be prefixed with that:
@@ -60,16 +63,16 @@ if [[ ! "$ROLE_PATH" =~ 'tripleo_ansible/roles/' ]] ; then
 fi
 
 # where to look for t-h-t params (both in $THT and $PUPPET files),
-yq -r '.parameters|keys[]' $PUPPET $THT | sort -h | tee /tmp/$SVC | \
+yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake
 
-yq -r '.parameters|keys[]' $PUPPET | sort -h | tee /tmp/$SVC | \
+yq -r '.parameters|keys[]' ${PUPPET[@]} | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake_base
 
 # prepare group vars to wire-in for tht to call the role
-yq -r '.parameters|keys[]' $PUPPET $THT | sort -h | tee /tmp/$SVC |\
+yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC |\
   python -c "import fileinput; import re; print([re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() + ': {get_param: ' + str.strip() + '}' for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_group_vars_wire_in
 
@@ -90,30 +93,30 @@ isobj='select (.value|type=="object")'
 # filter hiera data keys with direct values and directly defined defaults
 # to filter it later (to suggest default values for role vars matching hiera keys)
 yq -r "$hieraloc | $enterheatfuncs | $notheatfunc | $notobj" \
-  $PUPPET $THT > /tmp/${SVC}_config_defaults
+  ${PUPPET[@]} $THT > /tmp/${SVC}_config_defaults
 
 # get direct t-h-t params substitutions in hiera values
 # to filter it later (to drop role vars for hiera keys that already match other defined role vars)
 yq -r "$hieraloc | $enterheatfuncs | $isobj | select(.value.get_param!=null) | select(.value.get_param|type==\"string\")" \
-  $PUPPET $THT > /tmp/${SVC}_config_substitutions
+  ${PUPPET[@]} $THT > /tmp/${SVC}_config_substitutions
 
 # all data, including nested objects that requires special handling:
 # cannot assume a default, nor can assume if it misses a role var or not
 yq -r "$hieraloc | $enterheatfuncs" \
-  $PUPPET $THT > /tmp/${SVC}_config_special_full
+  ${PUPPET[@]} $THT > /tmp/${SVC}_config_special_full
 # do the best to suggest possible values
 yq -r "$hieraloc | $enterheatfuncs | $isheatfunc" \
-  $PUPPET $THT | awk -F '": ' '/::/ {if ($1) print}' | \
+  ${PUPPET[@]} $THT | awk -F '": ' '/::/ {if ($1) print}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/;s/,$//g;/ \{$/d' | \
   sort -u > /tmp/${SVC}_config_special
 
 # just a bulk raw view into related $SVC hiera keys
-yq -r "$hieraloc" $PUPPET $THT | grep  :: |\
+yq -r "$hieraloc" ${PUPPET[@]} $THT | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config
 
-yq -r "$hieraloc" $PUPPET | grep  :: |\
+yq -r "$hieraloc" ${PUPPET[@]} | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config_base
