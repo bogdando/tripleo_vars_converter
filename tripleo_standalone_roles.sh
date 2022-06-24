@@ -281,7 +281,7 @@ while read p; do
   # neither the new ansible config data doesn't implement it;
   # but leaving foo_real as a valid match for a foo
   m=$(sed -r "s/^tripleo_(${MATCH}|${SVC}_|_${SVC}$)//g" <<< $p)
-  m=$(sed -r "s/(\S+)_real/\1/g" <<< $m)
+  m=$(sed -r "s/(\S+)_real\b/\1/g" <<< $m)
   grep -q $m <<< $IGNORE && continue
   grep -q -E "${ignored%|*}" <<< $m && continue
   if ! grep -q $m /tmp/${SVC}_fnames && ! grep -q $m /tmp/${SVC}_cnames && ! grep -q $m /tmp/${SVC}_src; then
