@@ -19,10 +19,12 @@
 #
 # NOTE: stripping libvirt_ subcomponent off tripleo_nova_compute_libvirt_*
 # names quickly becomes misleading and breaks the mappings detection logic
+#
+# If it cannot match hiera mappings, adjust lookup paths in HIERALOC var
 
 SVC=nova_libvirt
 THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|compute_"
+MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|nova_compute_|libvirt_|compute_"
 #SVC=nova_compute
 #THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
 #MATCH="nova_|nova_libvirt_|nova_compute_"
@@ -32,6 +34,9 @@ PUPPET=(
   "/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
 )
 VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
+
+# where to look for hiera values in $THT and $PUPPET files
+HIERALOC='.outputs.role_data.value.config_settings,.outputs.config_settings.value,.resources.RoleParametersValue.properties.value'
 
 # role vars will be/expected to be prefixed with that:
 PREFIX="tripleo_${SVC}_"  # empty or just tripleo_ will not work
@@ -56,6 +61,7 @@ _config_dir
 _environment
 "
 
+# safety checks before running it
 if ! git diff --quiet ; then 
   echo "FATAL: Stage or commit work tree changes before running it!"
   exit 1
@@ -81,8 +87,6 @@ yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC |\
 
 # Prepare ansible config vars based on puppet base hiera data in tht
 
-# where to look for hiera values (both in $THT and $PUPPET files)
-hieraloc='.outputs.role_data.value.config_settings,.resources.RoleParametersValue.properties.value'
 # enter topscope funcs having the same output data view (like with and w/o map_merge)
 enterheatfuncs='.,.map_replace?,.map_merge?,.get_attr?,.str_replace?,.list_concat? | select(.!=null)[] | to_entries[] | select(.key|type!="number")'
 # is (not/) a heat func
@@ -95,31 +99,31 @@ isobj='select (.value|type=="object")'
 
 # filter hiera data keys with direct values and directly defined defaults
 # to filter it later (to suggest default values for role vars matching hiera keys)
-yq -r "$hieraloc | $enterheatfuncs | $notheatfunc | $notobj" \
+yq -r "$HIERALOC | $enterheatfuncs | $notheatfunc | $notobj" \
   ${PUPPET[@]} $THT > /tmp/${SVC}_config_defaults
 
 # get direct t-h-t params substitutions in hiera values
 # to filter it later (to drop role vars for hiera keys that already match other defined role vars)
-yq -r "$hieraloc | $enterheatfuncs | $isobj | select(.value.get_param!=null) | select(.value.get_param|type==\"string\")" \
+yq -r "$HIERALOC | $enterheatfuncs | $isobj | select(.value.get_param!=null) | select(.value.get_param|type==\"string\")" \
   ${PUPPET[@]} $THT > /tmp/${SVC}_config_substitutions
 
 # all data, including nested objects that requires special handling:
 # cannot assume a default, nor can assume if it misses a role var or not
-yq -r "$hieraloc | $enterheatfuncs" \
+yq -r "$HIERALOC | $enterheatfuncs" \
   ${PUPPET[@]} $THT > /tmp/${SVC}_config_special_full
 # do the best to suggest possible values
-yq -r "$hieraloc | $enterheatfuncs | $isheatfunc" \
+yq -r "$HIERALOC | $enterheatfuncs | $isheatfunc" \
   ${PUPPET[@]} $THT | awk -F '": ' '/::/ {if ($1) print}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/;s/,$//g;/ \{$/d' | \
   sort -u > /tmp/${SVC}_config_special
 
 # just a bulk raw view into related $SVC hiera keys
-yq -r "$hieraloc" ${PUPPET[@]} $THT | grep  :: |\
+yq -r "$HIERALOC" ${PUPPET[@]} $THT | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config
 
-yq -r "$hieraloc" ${PUPPET[@]} | grep  :: |\
+yq -r "$HIERALOC" ${PUPPET[@]} | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config_base
@@ -223,6 +227,7 @@ while IFS='  ' read -r o p pr n fn; do
       sed -r -i "/^${p}:/d" /tmp/${SVC}_group_vars_wire_in
   fi
   # to find missing vars by unmatching t-h-t params
+  # (do not consider it missing if is mentioned in vars file)
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
     if grep -q $n /tmp/${SVC}_snake_base ; then
       echo "INFO $fn: missing mapping to t-h-t puppet base param (ignore that)"
