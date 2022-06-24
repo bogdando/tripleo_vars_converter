@@ -5,21 +5,24 @@
 #SVC=service_component
 #THT=tripleo-heat-templates/deployment/service/service-component-container-puppet.yaml
 #
-# base puppet template with common params and hiera data, shared with other components
-#PUPPET=tripleo-heat-templates/deployment/service/service-base-puppet.yaml
+# base/puppet template(s) with common params and hiera data, shared with other components
+#PUPPET=(
+#  "tripleo-heat-templates/deployment/service/service-base-puppet.yaml"
+#  "tripleo-heat-templates/deployment/service/service-common.yaml"
+#)
 #
-# matching regex rules to deduplicate long names, like
+# matching regex rules to deduplicate long names, like:
 # tripleo_service_component_foo_service_bar_component_subcomponent_baz
 # into: tripleo_service_component_foo_subcomponent_baz
-# (do not ue regex capture groups here)
-#MATCH="nova_|nova_libvirt_|nova_compute_"
+# (do not use regex capture groups here)
+#MATCH="service_|service_component1_|service_component2|component_"
 #
 # NOTE: stripping libvirt_ subcomponent off tripleo_nova_compute_libvirt_*
 # names quickly becomes misleading and breaks the mappings detection logic
 
 SVC=nova_libvirt
 THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
-MATCH="nova_|nova_libvirt_|compute_"
+MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|compute_"
 #SVC=nova_compute
 #THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
 #MATCH="nova_|nova_libvirt_|nova_compute_"
