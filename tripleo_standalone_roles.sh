@@ -1,21 +1,19 @@
 #!/bin/bash
 # Validate and fix tripleo standalone role vars mappings for t-h-t/hiera data
 #
-# Example:
-#SVC=service_component
-#THT=tripleo-heat-templates/deployment/service/service-component-container-puppet.yaml
-#
-# base/puppet template(s) with common params and hiera data, shared with other components
-#PUPPET=(
-#  "tripleo-heat-templates/deployment/service/service-base-puppet.yaml"
-#  "tripleo-heat-templates/deployment/service/service-common.yaml"
-#)
-#
-# matching regex rules to deduplicate long names, like:
-# tripleo_service_component_foo_service_bar_component_subcomponent_baz
-# into: tripleo_service_component_foo_subcomponent_baz
-# (do not use regex capture groups here)
-#MATCH="service_|service_component1_|service_component2|component_"
+# Example PARAMS_FILE contents:
+# SVC=nova_libvirt
+# THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+# # matching regex rules to deduplicate long names, like:
+# # tripleo_service_component_foo_service_bar_component_subcomponent_baz
+# # into: tripleo_service_component_foo_subcomponent_baz
+# # (do not use regex capture groups here)
+# MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|nova_compute_|libvirt_|compute_"
+# # base/puppet template(s) with common params and hiera data, shared with other components
+# PUPPET=(
+#   "tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml"
+#   "tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
+# )
 #
 # NOTE: stripping libvirt_ subcomponent off tripleo_nova_compute_libvirt_*
 # names quickly becomes misleading and breaks the mappings detection logic
@@ -23,25 +21,15 @@
 # If it cannot match hiera mappings, adjust lookup paths in HIERALOC var
 
 SVC=nova_libvirt
-THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
+THT=tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
 MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|nova_compute_|libvirt_|compute_"
-#SVC=nova_compute
-#THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-compute-container-puppet.yaml
-#MATCH="nova_|nova_libvirt_|nova_compute_"
-
 PUPPET=(
-  "/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml"
-  "/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
+  "tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml"
+  "tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
 )
-VARS=/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml
 
 # where to look for hiera values in $THT and $PUPPET files
 HIERALOC='.outputs.role_data.value.config_settings,.outputs.config_settings.value,.resources.RoleParametersValue.properties.value'
-
-# role vars will be/expected to be prefixed with that:
-PREFIX="tripleo_${SVC}_"  # empty or just tripleo_ will not work
-
-ROLE_PATH=$(dirname $(dirname "$VARS"))
 
 # special names for t-h-t params and role vars to exclude from checking
 IGNORE="
@@ -62,7 +50,14 @@ _environment
 "
 
 # overwrite above defaults from custom params file
-[ -f "$PARAMS_FILE" ] && source "$PARAMS_FILE"
+[ -f "$PARAMS_FILE" ] && . "$PARAMS_FILE"
+
+set -ueo pipefail
+VARS=${VARS:-/opt/Projects/gitrepos/OOO/tripleo-ansible/tripleo_ansible/roles/tripleo_$SVC/defaults/main.yml}
+ROLE_PATH=$(dirname $(dirname "$VARS"))
+
+# role vars will be/expected to be prefixed with that:
+PREFIX="${PREFIX:-tripleo_$SVC}_"  # empty or just tripleo_ will not work
 
 # safety checks before running it
 if ! git diff --quiet ; then 
@@ -74,6 +69,7 @@ if [[ ! "$ROLE_PATH" =~ 'tripleo_ansible/roles/' ]] ; then
   exit 1
 fi
 
+set +e
 # where to look for t-h-t params (both in $THT and $PUPPET files),
 yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
@@ -188,7 +184,7 @@ while read -r o p; do
     pref=${PREFIX}${pref}
   fi
   fname=$(sed -r "s/($SVC)_\1/\1/g;s/(tripleo_${SVC}_)($MATCH)(.*)/\1\3/g" <<< $pref$tht)
-  if [ $(grep -q " $n " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
+  if [ $(grep -q " $p " /tmp/${SVC}_fnames | wc -l) -gt 1 ]; then
     echo "FATAL $fname: cannot be defined more than once. Stopping."
     exit 1
   fi
