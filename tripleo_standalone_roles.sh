@@ -22,7 +22,6 @@
 #
 # If it cannot match hiera mappings, adjust lookup paths in HIERALOC var
 
-# TODO: source varfiles for these instead of hardcoding it
 SVC=nova_libvirt
 THT=/opt/Projects/gitrepos/OOO/tripleo-heat-templates/deployment/nova/nova-modular-libvirt-container-puppet.yaml
 MATCH="nova_|nova_libvirt_|nova_compute_libvirt_|nova_compute_|libvirt_|compute_"
@@ -61,6 +60,9 @@ _ansible
 _config_dir
 _environment
 "
+
+# overwrite above defaults from custom params file
+[ -f "$PARAMS_FILE" ] && source "$PARAMS_FILE"
 
 # safety checks before running it
 if ! git diff --quiet ; then 
