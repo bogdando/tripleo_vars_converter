@@ -27,9 +27,10 @@ PUPPET=(
   "tripleo-heat-templates/deployment/nova/nova-base-puppet.yaml"
   "tripleo-heat-templates/deployment/logging/files/nova-libvirt.yaml"
 )
-
 # where to look for hiera values in $THT and $PUPPET files
 HIERALOC='.outputs.role_data.value.config_settings,.outputs.config_settings.value,.resources.RoleParametersValue.properties.value'
+# how to enter nested heat functions to get hiera data as top level keys
+HEATFUNCS='.,.map_replace?,.map_merge?,.get_attr?,.str_replace?,.list_concat? | select(.!=null)[]'
 
 # special names for t-h-t params and role vars to exclude from checking
 IGNORE="
@@ -42,6 +43,7 @@ _debug
 _hide_sensitive_logs
 _network
 _volume
+_volumes
 _environment
 _idm_realm
 _ansible
@@ -86,14 +88,10 @@ yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC |\
   yq -r '.[]' | sort -u >  /tmp/${SVC}_group_vars_wire_in
 
 # Prepare ansible config vars based on puppet base hiera data in tht
-
-# enter topscope funcs having the same output data view (like with and w/o map_merge)
-enterheatfuncs='.,.map_replace?,.map_merge?,.get_attr?,.str_replace?,.list_concat? | select(.!=null)[] | to_entries[] | select(.key|type!="number")'
-# is (not/) a heat func
+enterheatfuncs="$HEATFUNCS | select (.|type==\"object\") | to_entries[] | select(.key|type!=\"number\")"
 # FIXME: this treats unqualified hiera keys as heat functions...
 notheatfunc='select(.key|test("::"))'
 isheatfunc='select(.key|test("::")|not)'
-# is (not/) an object
 notobj='select (.value|type!="object")'
 isobj='select (.value|type=="object")'
 
