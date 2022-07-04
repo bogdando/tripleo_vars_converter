@@ -75,7 +75,8 @@ yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake
 
-yq -r '.parameters|keys[]' ${PUPPET[@]} | sort -h | tee /tmp/$SVC | \
+echo > /tmp/${SVC}_snake_base
+[ "${PUPPET[@]}" ] && yq -r '.parameters|keys[]' ${PUPPET[@]} | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake_base
 
@@ -117,12 +118,14 @@ yq -r "$HIERALOC | $enterheatfuncs | $isheatfunc" \
   sort -u > /tmp/${SVC}_config_special
 
 # just a bulk raw view into related $SVC hiera keys
-yq -r "$HIERALOC" ${PUPPET[@]} $THT | grep  :: |\
+echo > /tmp/${SVC}_config
+[ "${PUPPET[@]}" ] && yq -r "$HIERALOC" ${PUPPET[@]} $THT | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config
 
-yq -r "$HIERALOC" ${PUPPET[@]} | grep  :: |\
+echo > /tmp/${SVC}_config_base
+[ "${PUPPET[@]}" ] && yq -r "$HIERALOC" ${PUPPET[@]} | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config_base
