@@ -77,7 +77,7 @@ yq -r '.parameters|keys[]' ${PUPPET[@]} $THT | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake
 
-echo > /tmp/${SVC}_snake_base
+rm -f /tmp/${SVC}_snake_base
 [ "${PUPPET[@]}" ] && yq -r '.parameters|keys[]' ${PUPPET[@]} | sort -h | tee /tmp/$SVC | \
   python -c "import fileinput; import re; print([str.strip() + ' ' + re.sub('([a-z0-9])([A-Z])', r'\1_\2', re.sub('(.)([A-Z][a-z]+)', r'\1_\2', str)).lower().strip() for str in fileinput.input()])" | \
   yq -r '.[]' | sort -u >  /tmp/${SVC}_snake_base
@@ -116,13 +116,12 @@ yq -r "$HIERALOC | $enterheatfuncs | $isheatfunc" \
   sort -u > /tmp/${SVC}_config_special
 
 # just a bulk raw view into related $SVC hiera keys
-echo > /tmp/${SVC}_config
-[ "${PUPPET[@]}" ] && yq -r "$HIERALOC" ${PUPPET[@]} $THT | grep  :: |\
+yq -r "$HIERALOC" ${PUPPET[@]} $THT | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
   sort -u > /tmp/${SVC}_config
 
-echo > /tmp/${SVC}_config_base
+rm -f /tmp/${SVC}_config_base
 [ "${PUPPET[@]}" ] && yq -r "$HIERALOC" ${PUPPET[@]} | grep  :: |\
   awk -F '": ' '/::/ {if ($1) print $1}' | \
   sed -r 's/\"//g;s/::/_/g;s/^\s+(.*)/\1/' | \
@@ -222,14 +221,14 @@ while IFS='  ' read -r o p pr n fn; do
     sed -r -i "/^(${o}|${p}):/d" /tmp/${SVC}_group_vars_wire_in
     continue
   fi
-  if grep -q $n /tmp/${SVC}_snake_base ; then
+  if test -f /tmp/${SVC}_snake_base && grep -q $n /tmp/${SVC}_snake_base; then
       # drop it from the list of group vars to wire-in in tht for main SVC
       sed -r -i "/^${p}:/d" /tmp/${SVC}_group_vars_wire_in
   fi
   # to find missing vars by unmatching t-h-t params
   # (do not consider it missing if is mentioned in vars file)
   if ! grep -q $n /tmp/${SVC}_sr && ! grep -q $n $VARS ; then
-    if grep -q $n /tmp/${SVC}_snake_base ; then
+    if test -f /tmp/${SVC}_snake_base && grep -q $n /tmp/${SVC}_snake_base; then
       echo "INFO $fn: missing mapping to t-h-t puppet base param (ignore that)"
       continue
     else
@@ -262,14 +261,14 @@ while IFS='  ' read -r s p n fn; do
     strict_name_match=$(sed -r "s/_|::/\(_\|::\)/g" <<< $s)
     default=$(jq -r  "select(.key|test(\"${standard_name_match}|${strict_name_match}\")) | .value" /tmp/${SVC}_config_defaults /tmp/${SVC}_config_special_full | uniq)
     if [ "${default}${lookup}" ]; then
-      if grep -q $n /tmp/${SVC}_config_base ; then
+      if test -f /tmp/${SVC}_config_base && grep -q $n /tmp/${SVC}_config_base ; then
         echo "INFO $fn: missing mapping to puppet base hiera key (ignore that): matching t-h-t value: ${lookup:-$default}"
       else
         echo "ERROR $fn: missing mapping to hiera key: matching t-h-t value: ${lookup:-$default}"
       fi
       continue
     fi
-    if grep -q $n /tmp/${SVC}_config_base ; then
+    if test -f /tmp/${SVC}_config_base && grep -q $n /tmp/${SVC}_config_base ; then
       echo "INFO $fn: missing mapping to puppet base hiera key (ignore that): see t-h-t definition: $default"
     else
       echo "ERROR $fn: missing mapping to hiera key: see t-h-t definition: $default"
