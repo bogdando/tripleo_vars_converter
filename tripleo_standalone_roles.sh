@@ -62,12 +62,12 @@ ROLE_PATH=$(dirname $(dirname "$VARS"))
 PREFIX="${PREFIX:-tripleo_$SVC}_"  # empty or just tripleo_ will not work
 
 # safety checks before running it
-if ! git diff --quiet ; then 
-  echo "FATAL: Stage or commit work tree changes before running it!"
-  exit 1
-fi
 if [[ ! "$ROLE_PATH" =~ 'tripleo_ansible/roles/' ]] ; then
   echo "FATAL: $VARS file should be inside of the tripleo_ansible/roles/ path!"
+  exit 1
+fi
+if ! git -C "$ROLE_PATH" diff --quiet ; then 
+  echo "FATAL: Stage or commit work tree changes before running it!"
   exit 1
 fi
 
